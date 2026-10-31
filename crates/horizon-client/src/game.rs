@@ -19168,8 +19168,9 @@ impl Loading {
         match loading_renderer(
             window.clone(),
             offscreen,
-            Some(&self.boot),
-            None,
+            // Android: the setup's skin can load before the window, and a resume has it too.
+            Some(self.gui.as_ref().map_or(&self.boot, |gui| &gui.atlas)),
+            self.gui.as_ref().map(|gui| gui.panorama.as_ref()),
             None,
             self.settings.horizon.api,
         ) {
