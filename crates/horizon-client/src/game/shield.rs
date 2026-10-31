@@ -34,7 +34,7 @@ impl Game<'_> {
         &self,
         stack: &ItemStack,
     ) -> Option<&horizon_client::items::BlocksAttacks> {
-        self.res.items().get(&stack.item)?.blocks_attacks.as_ref()
+        self.items().get(&stack.item)?.blocks_attacks.as_ref()
     }
     /// `ShieldItem.use` (ItemUtils.startUsingInstantly) for the hand at `slot`;
     /// false when that hand holds no blocking item or it is on cooldown.
@@ -64,7 +64,7 @@ impl Game<'_> {
         if (ticks as i32) < (component.delay_seconds * 20.0).round() as i32 {
             return None;
         }
-        let tags = &self.res.stations().enchantments.damage_tags;
+        let tags = &self.stations().enchantments.damage_tags;
         let matches = |spec: &str| match spec.strip_prefix('#') {
             Some(tag) => tags.get(tag).is_some_and(|t| t.contains(damage_type)),
             None => spec == damage_type,
@@ -161,14 +161,16 @@ impl Game<'_> {
             {
                 s.damage += loss;
                 if s.damage >= max {
+                    let broken = s.clone();
                     *cell = None;
                     self.using = None;
-                    self.audio.play(
-                        "minecraft:item.shield.break",
-                        at,
-                        0.8,
-                        0.8 + self.world.random.next_float() * 0.4,
-                    );
+                    // ItemStack.hurtAndBreak: onEquippedItemBroken for the hand it was used from.
+                    let hand = if slot == OFFHAND_SLOT {
+                        horizon_world::player_inventory::EquipmentSlot::OffHand
+                    } else {
+                        horizon_world::player_inventory::EquipmentSlot::MainHand
+                    };
+                    self.player_equipment_broke(hand, &broken);
                     return;
                 }
             }
@@ -197,7 +199,7 @@ impl Game<'_> {
             m.extra
                 .main_hand
                 .as_deref()
-                .and_then(|item| self.res.items().get(item))
+                .and_then(|item| self.items().get(item))
                 .map_or(0.0, |i| i.disable_blocking_seconds)
         };
         // Ravager.blockedByItem: stunned half the time (the defender pushed

@@ -16,6 +16,15 @@ path = "../horizon-client/src/android_lib.rs"
 # lints don't compile the game module a second time.
 [target.'cfg(target_os = "android")'.dependencies]
 horizon-client = { path = "../horizon-client", default-features = false, features = ["mods"] }
+horizon-anticheat = { path = "../horizon-anticheat" }
+horizon-chat-filter = { path = "../horizon-chat-filter" }
+horizon-client-input = { path = "../horizon-client-input" }
+horizon-client-render = { path = "../horizon-client-render" }
+horizon-items = { path = "../horizon-items" }
+horizon-narrator = { path = "../horizon-narrator" }
+horizon-server-files = { path = "../horizon-server-files" }
+horizon-theme = { path = "../horizon-theme" }
+zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
 horizon-assets = { path = "../horizon-assets" }
 horizon-bench = { path = "../horizon-bench" }
 horizon-core = { path = "../horizon-core" }

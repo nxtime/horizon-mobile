@@ -21,7 +21,7 @@ pub const STARLING_API: &str = "starling-0.1";
 /// The WIT packages and versions a component may link.
 const LINKED: [(&str, &str); 2] = [("horizon:mods/", "0.1."), ("starling:mods/", "0.1.")];
 /// The manifest `api` lines this build loads. 0.2 is 0.1 plus content:
-/// `assets/` and `data/` in the `.hmod`, with blocks and items declared in
+/// `assets/` and `data/` in the `.hmod`, with blocks, items and mob effects declared in
 /// `data/<id>/horizon/` (docs/modpacks.md). Code still links API 0.1.
 /// 0.3 is a server mod (experimental): the `horizon-server-mod` world. starling-0.1 links
 /// `starling:mods` and may hold content too.
@@ -153,7 +153,7 @@ pub enum Capability {
     Storage,
     /// Runs vanilla commands as the player, with the player's permissions.
     Command,
-    /// New blocks and items from the mod's `data/` (API 0.2): no WIT
+    /// New blocks, items and mob effects from the mod's `data/` (API 0.2): no WIT
     /// interface, the game reads them before the world loads.
     Registries,
     /// The players on the server and messages to them (server mods).

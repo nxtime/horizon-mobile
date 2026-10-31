@@ -124,7 +124,7 @@ impl DataPacks {
         let dir = folder();
         let selected = std::iter::once("vanilla".to_owned())
             .chain(mods.iter().map(|id| format!("{MOD}{id}")))
-            .chain(packs.iter().cloned())
+            .chain(packs.iter().filter(|p| *p != "vanilla").cloned())
             .collect();
         DataPacks {
             opening: Some((infos(&dir), selected)),
@@ -136,10 +136,18 @@ impl DataPacks {
     }
     fn screen(&mut self, m: &Measure, (w, h): (i32, i32)) -> &mut PackScreen {
         if let Some((infos, selected)) = self.opening.take() {
-            self.screen = Some(PackScreen::new(m, w, h, false, infos, &selected).for_data(m));
+            self.screen = Some(PackScreen::new(m, Text::default(), w, h, false, infos, &selected).for_data(m));
         }
         let screen = self.screen.get_or_insert_with(|| {
-            PackScreen::new(m, w, h, false, infos(&folder()), &["vanilla".to_owned()]).for_data(m)
+            PackScreen::new(
+                m,
+                Text::default(),
+                w,
+                h,
+                false,
+                infos(&folder()),
+                &["vanilla".to_owned()],
+            ).for_data(m)
         });
         if screen.width != w || screen.height != h {
             screen.resize(m, w, h);

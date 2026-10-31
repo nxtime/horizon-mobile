@@ -7,7 +7,7 @@ use std::{collections::HashMap, path::Path};
 
 /// Each asset's layers: by kind (`humanoid`, `humanoid_leggings`, `wings`...), the first layer's
 /// sprite and, for a dyeable one, its colour when undyed.
-pub type Layers = HashMap<String, HashMap<String, (String, Option<u32>)>>;
+pub type Layers = HashMap<String, HashMap<String, Vec<(String, Option<u32>)>>>;
 
 /// Every equipment asset under `root`, as its id and JSON, vanilla's namespace first.
 pub fn assets(root: &Path) -> Vec<(String, Value)> {
@@ -52,19 +52,27 @@ pub fn sprite(texture: &str, kind: &str) -> String {
     }
 }
 
-/// Asset `id`'s first layer of each kind.
-pub fn layers(id: &str, v: &Value) -> HashMap<String, (String, Option<u32>)> {
+/// Asset `id`'s layers of each kind, in order (leather's overlay is layer 1).
+pub fn layers(id: &str, v: &Value) -> HashMap<String, Vec<(String, Option<u32>)>> {
     let mut kinds = HashMap::new();
     let Some(all) = v["layers"].as_object() else {
         return kinds;
     };
     for (kind, list) in all {
-        if let Some(layer) = list.get(0) {
-            let texture = layer["texture"].as_str().unwrap_or(id);
-            let undyed = layer["dyeable"]["color_when_undyed"]
-                .as_i64()
-                .map(|c| c as u32 & 0xFF_FFFF);
-            kinds.insert(kind.clone(), (sprite(texture, kind), undyed));
+        let found: Vec<_> = list
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|layer| {
+                let texture = layer["texture"].as_str().unwrap_or(id);
+                let undyed = layer["dyeable"]["color_when_undyed"]
+                    .as_i64()
+                    .map(|c| c as u32 & 0xFF_FFFF);
+                (sprite(texture, kind), undyed)
+            })
+            .collect();
+        if !found.is_empty() {
+            kinds.insert(kind.clone(), found);
         }
     }
     kinds
@@ -107,11 +115,11 @@ mod tests {
         let kinds = layers("nexo:ruby", &v);
         assert_eq!(
             kinds["humanoid"],
-            ("nexo:entity/equipment/humanoid/ruby".into(), Some(0x123456))
+            [("nexo:entity/equipment/humanoid/ruby".to_owned(), Some(0x123456))]
         );
         assert_eq!(
             kinds["humanoid_leggings"],
-            ("nexo:entity/equipment/humanoid_leggings/ruby".into(), None)
+            [("nexo:entity/equipment/humanoid_leggings/ruby".to_owned(), None)]
         );
     }
 }

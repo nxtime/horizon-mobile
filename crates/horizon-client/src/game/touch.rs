@@ -25,9 +25,7 @@ use horizon_client::{
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use winit::{
-    application::ApplicationHandler,
     event::{ElementState, KeyEvent, TouchPhase, WindowEvent},
-    event_loop::ActiveEventLoop,
     keyboard::{Key, KeyCode, NamedKey},
     window::WindowId,
 };
@@ -172,7 +170,7 @@ fn label(ui: &mut Ui, c: [f32; 2], r: f32, text: &str, tint: u32) {
     let d = ui.density;
     let size = (r / d * 0.5).clamp(9.0, 16.0);
     ui.text_centered(
-        Face::Semibold,
+        Face::SemiBold,
         size,
         c[0] / d,
         c[1] / d - size * 0.62,
@@ -353,7 +351,7 @@ pub(super) fn draw_editor(
         None => "all".to_owned(),
     };
     ui.text_centered(
-        Face::Semibold,
+        Face::SemiBold,
         12.0,
         (x0 + x1) / 2.0 / d,
         (y - 0.75 * u) / d,
@@ -602,7 +600,7 @@ impl Game<'_> {
     /// A touch event; true when it was taken (the caller passes the rest on).
     pub(super) fn touch_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn super::event_loop::EventLoopCtl,
         id: WindowId,
         event: &WindowEvent,
     ) -> bool {
@@ -702,7 +700,7 @@ impl Game<'_> {
                 .pointer
                 .set_gui_scale(gui_scale, self.settings.mouse_wheel_sensitivity);
             for mouse in self.touch.pointer.event(t, slop, Instant::now()) {
-                self.window_event(event_loop, id, mouse);
+                self.handle_window_event(event_loop, id, mouse);
             }
             // A tap on the text field brings up the on-screen keyboard, a tap beside it puts the
             // keyboard away (the chat keeps it).
@@ -743,7 +741,7 @@ impl Game<'_> {
     }
 
     /// Once per loop iteration, before the pads are read.
-    pub(super) fn touch_frame(&mut self, event_loop: &ActiveEventLoop) {
+    pub(super) fn touch_frame(&mut self, event_loop: &dyn super::event_loop::EventLoopCtl) {
         let now = Instant::now();
         if self.touch.config.is_none() {
             let text = Self::touch_layout_path()
@@ -771,7 +769,7 @@ impl Game<'_> {
         }
         if let Some(id) = self.window.as_ref().map(|w| w.id()) {
             for mouse in self.touch.pointer.frame_events(now) {
-                self.window_event(event_loop, id, mouse);
+                self.handle_window_event(event_loop, id, mouse);
             }
             self.slot_touch_frame(event_loop, id);
         }
@@ -1371,7 +1369,7 @@ impl Game<'_> {
     pub(super) fn touch_input_command(
         &mut self,
         words: &[&str],
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn super::event_loop::EventLoopCtl,
     ) -> Result<Option<Value>> {
         if words.first() != Some(&"touch") {
             return Ok(None);
@@ -1412,7 +1410,7 @@ impl Game<'_> {
                 force: None,
                 id: finger,
             };
-            self.window_event(event_loop, id, WindowEvent::Touch(touch));
+            self.handle_window_event(event_loop, id, WindowEvent::Touch(touch));
         }
         Ok(Some(json!({ "ok": true, "screen": self.screen_label() })))
     }

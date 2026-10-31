@@ -17,10 +17,8 @@ use horizon_client::{
 };
 use std::time::{Duration, Instant};
 use winit::{
-    application::ApplicationHandler,
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseButton, Touch, TouchPhase, WindowEvent},
-    event_loop::ActiveEventLoop,
     keyboard::KeyCode,
     window::WindowId,
 };
@@ -170,7 +168,7 @@ impl Game<'_> {
     /// leaves it alone).
     pub(in crate::game) fn slot_touch_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         t: &Touch,
     ) -> bool {
@@ -270,7 +268,7 @@ impl Game<'_> {
                 let mut events = self.touch.pointer.event(&start, slop, now);
                 events.extend(self.touch.pointer.event(t, slop, now));
                 for mouse in events {
-                    self.window_event(event_loop, id, mouse);
+                    self.handle_window_event(event_loop, id, mouse);
                 }
                 true
             }
@@ -299,7 +297,7 @@ impl Game<'_> {
     }
 
     /// Once a frame: a finger resting on a stack picks half of it.
-    pub(in crate::game) fn slot_touch_frame(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
+    pub(in crate::game) fn slot_touch_frame(&mut self, event_loop: &dyn crate::game::event_loop::EventLoopCtl, id: WindowId) {
         if !self.slot_touch_screen() {
             self.touch.slots = SlotTouch::default();
             return;
@@ -324,7 +322,7 @@ impl Game<'_> {
     /// A tap at `at`: on a slot (`Some`) or outside the window.
     fn touch_slot_tap(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         device: DeviceId,
         slot: Option<usize>,
@@ -395,7 +393,7 @@ impl Game<'_> {
     /// keeps going back where the pick was. Across one slot it is a tap there.
     fn touch_spread_end(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         device: DeviceId,
         slots: Vec<usize>,
@@ -412,7 +410,7 @@ impl Game<'_> {
                 self.touch_grab(event_loop, id, device, p);
                 for (i, &slot) in slots.iter().enumerate() {
                     let position = self.touch_slot_center(slot);
-                    self.window_event(
+                    self.handle_window_event(
                         event_loop,
                         id,
                         WindowEvent::CursorMoved {
@@ -448,12 +446,12 @@ impl Game<'_> {
 
     fn touch_mouse_button(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         device: DeviceId,
         state: ElementState,
     ) {
-        self.window_event(
+        self.handle_window_event(
             event_loop,
             id,
             WindowEvent::MouseInput {
@@ -512,7 +510,7 @@ impl Game<'_> {
     /// stack of a creative tab's item (Shift-click on it).
     fn touch_grab(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         device: DeviceId,
         p: Picked,
@@ -532,7 +530,7 @@ impl Game<'_> {
     /// Picks a stack (drawn by `draw_slot_pick`).
     fn touch_pick(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         device: DeviceId,
         slot: usize,
@@ -547,15 +545,15 @@ impl Game<'_> {
     }
 
     /// Lets go of the pick.
-    fn touch_unpick(&mut self, event_loop: &ActiveEventLoop, id: WindowId, device: DeviceId) {
+    fn touch_unpick(&mut self, event_loop: &dyn crate::game::event_loop::EventLoopCtl, id: WindowId, device: DeviceId) {
         self.touch.slots.picked = None;
         self.touch_unhover(event_loop, id, device);
     }
 
     /// The cursor out of the window: no slot shows hovered, no tooltip follows the finger.
-    fn touch_unhover(&mut self, event_loop: &ActiveEventLoop, id: WindowId, device: DeviceId) {
+    fn touch_unhover(&mut self, event_loop: &dyn crate::game::event_loop::EventLoopCtl, id: WindowId, device: DeviceId) {
         let away = PhysicalPosition::new(-1000.0, -1000.0);
-        self.window_event(
+        self.handle_window_event(
             event_loop,
             id,
             WindowEvent::CursorMoved {
@@ -583,7 +581,7 @@ impl Game<'_> {
 
     fn touch_slot_click(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         device: DeviceId,
         slot: usize,
@@ -597,7 +595,7 @@ impl Game<'_> {
     /// A mouse click at a window position, Shift held for it when asked.
     fn touch_click_at(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        event_loop: &dyn crate::game::event_loop::EventLoopCtl,
         id: WindowId,
         device: DeviceId,
         at: PhysicalPosition<f64>,
@@ -605,7 +603,7 @@ impl Game<'_> {
         shift: bool,
     ) {
         let held = shift && self.physical_keys.insert(KeyCode::ShiftLeft);
-        self.window_event(
+        self.handle_window_event(
             event_loop,
             id,
             WindowEvent::CursorMoved {
@@ -614,7 +612,7 @@ impl Game<'_> {
             },
         );
         for state in [ElementState::Pressed, ElementState::Released] {
-            self.window_event(
+            self.handle_window_event(
                 event_loop,
                 id,
                 WindowEvent::MouseInput {

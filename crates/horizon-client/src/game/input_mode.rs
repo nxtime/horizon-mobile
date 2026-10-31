@@ -6,10 +6,8 @@ use super::Game;
 use horizon_client::input_mode::InputMode;
 #[cfg(target_os = "android")]
 use winit::{
-    application::ApplicationHandler,
     dpi::PhysicalPosition,
     event::{DeviceId, ElementState, MouseScrollDelta, TouchPhase, WindowEvent},
-    event_loop::ActiveEventLoop,
 };
 
 impl Game<'_> {
@@ -44,7 +42,7 @@ impl Game<'_> {
     /// a physical keyboard's keys, and the mouse's events since the last iteration, as window
     /// events (its captured motion turns the view as a computer's raw motion does).
     #[cfg(target_os = "android")]
-    pub(super) fn android_input_frame(&mut self, event_loop: &ActiveEventLoop) {
+    pub(super) fn android_input_frame(&mut self, event_loop: &dyn super::event_loop::EventLoopCtl) {
         if crate::pointer_capture_lost() && self.captured {
             self.capture(false);
         }
@@ -85,7 +83,7 @@ impl Game<'_> {
                     continue;
                 }
             };
-            self.window_event(event_loop, id, event);
+            self.handle_window_event(event_loop, id, event);
         }
     }
 }

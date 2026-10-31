@@ -468,7 +468,7 @@ impl Fishing {
         }
         if self.caught > 0 {
             let count = format!("Caught: {}", self.caught);
-            let cw = ui.measure(Face::Semibold, 15.0, &count);
+            let cw = ui.measure(Face::SemiBold, 15.0, &count);
             pill(ui, w - 16.0 - cw / 2.0 - 16.0, 16.0, &count, true);
         }
     }
@@ -527,7 +527,7 @@ fn ring(ui: &mut Ui<'_>, at: [f32; 2], r: f32, fade: f32) {
 
 /// Text on a dark pill centred on `cx`, its top at `y`.
 fn pill(ui: &mut Ui<'_>, cx: f32, y: f32, text: &str, bold: bool) {
-    let face = if bold { Face::Semibold } else { Face::Regular };
+    let face = if bold { Face::SemiBold } else { Face::Regular };
     let tw = ui.measure(face, 15.0, text);
     ui.rounded(
         cx - tw / 2.0 - 16.0,

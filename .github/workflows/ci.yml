@@ -20,14 +20,23 @@ env:
   HORIZON_TELEMETRY_URL: "off"
 
 jobs:
+  # One job, not one per check: each job takes a runner from the organisation's shared pool, and with every pull request
+  # and every merge to main starting this workflow, three jobs a run left the pool's queue tens of minutes deep.
+  #
+  # Where: main's pushes and this repository's own pull requests on playhorizon's checks runners (label playhorizon-ci,
+  # docs/ci-runners.md), out of that pool; a fork's pull request always on GitHub's (its code never runs on a
+  # self-hosted runner, and the runners refuse it themselves). The repository variable SELF_HOSTED_CI=off sends every
+  # job back to GitHub's. There the build folder persists (CARGO_TARGET_DIR, outside the checkout), so the apt
+  # packages, Python and the Rust cache steps are GitHub's only.
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ${{ vars.SELF_HOSTED_CI != 'off' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "linux", "playhorizon-ci"]') || 'ubuntu-latest' }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
+        if: runner.environment == 'github-hosted'
         with:
           python-version: '3.12'
       - name: Does this pull request need Rust checks?
@@ -37,20 +46,31 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python3 tools/ci/rust_changes.py "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+      # A pull request adds only its own commits to main, so it reads those; main's pushes read every ref's history.
       - name: Keep game artifacts out of Git
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python tools/check_public_tree.py
-          python tools/check_public_tree.py --history
+          if [ "$EVENT" = pull_request ]; then
+            python tools/check_public_tree.py --range "$BASE_SHA..$HEAD_SHA"
+          else
+            python tools/check_public_tree.py --history
+          fi
       - name: Test offline research tooling
         run: python -m unittest discover -s tests -v
       - name: Install Rust toolchain and the ALSA and udev headers the client links against
         if: steps.rust.outputs.required != 'false'
+        env:
+          HOSTED: ${{ runner.environment == 'github-hosted' }}
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
       # Dependencies and the workspace's own build, saved from the android branch's runs (pull requests read its cache).
       - uses: Swatinem/rust-cache@v2
-        if: steps.rust.outputs.required != 'false'
+        if: steps.rust.outputs.required != 'false' && runner.environment == 'github-hosted'
         with:
           shared-key: verify
           save-if: ${{ github.ref == 'refs/heads/android' }}

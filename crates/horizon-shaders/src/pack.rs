@@ -18,6 +18,9 @@ pub struct Pack {
     files: Files,
     /// The option values picked (`set_values`), applied to the sources as they are read.
     values: crate::Values,
+    /// The values the player chose for the pack's options, applied to its sources as they are
+    /// read (`options::apply`).
+    chosen: BTreeMap<String, String>,
 }
 
 enum Files {
@@ -75,6 +78,7 @@ impl Pack {
             name,
             files,
             values: Default::default(),
+            chosen: BTreeMap::new(),
         })
     }
 
@@ -85,23 +89,44 @@ impl Pack {
             name: name.to_owned(),
             files,
             values: Default::default(),
+            chosen: BTreeMap::new(),
         })
     }
 
     fn zip_files(bytes: Vec<u8>) -> Result<Files, PackError> {
         let archive = ZipArchive::new(Cursor::new(Arc::from(bytes)))
             .map_err(|e| PackError::Zip(e.to_string()))?;
-        let entries: BTreeMap<String, usize> = (0..archive.len())
-            .filter_map(|i| {
-                let name = archive.name_for_index(i)?.replace('\\', "/");
-                let inner = name.strip_prefix(ROOT)?.strip_prefix('/')?;
-                (!inner.is_empty() && !inner.ends_with('/')).then(|| (inner.to_owned(), i))
-            })
-            .collect();
+        let mut entries = BTreeMap::new();
+        for i in 0..archive.len() {
+            let Some(name) = archive.name_for_index(i) else {
+                continue;
+            };
+            let name = name
+                .map_err(|e| PackError::Zip(e.to_string()))?
+                .replace('\\', "/");
+            if let Some(inner) = name.strip_prefix(ROOT).and_then(|n| n.strip_prefix('/'))
+                && !inner.is_empty()
+                && !inner.ends_with('/')
+            {
+                entries.insert(inner.to_owned(), i);
+            }
+        }
         if entries.is_empty() {
             return Err(PackError::NoShadersFolder);
         }
         Ok(Files::Zip { archive, entries })
+    }
+
+    /// The pack with options at the values in `chosen` (name to value, `true` or `false` for a
+    /// switch) instead of their defaults. A value the option doesn't list (a file edited by
+    /// hand) is left out.
+    pub fn with_chosen(mut self, chosen: BTreeMap<String, String>) -> Self {
+        let options = crate::options(&self);
+        self.chosen = chosen
+            .into_iter()
+            .filter(|(name, value)| options.get(name).is_some_and(|o| o.values.contains(value)))
+            .collect();
+        self
     }
 
     /// The folder or file name the pack was opened from (`BSL.zip`).
@@ -132,9 +157,16 @@ impl Pack {
         let bytes = self.read(path)?;
         let text = String::from_utf8_lossy(&bytes);
         let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
-        let source = !path.ends_with(".properties") && !path.starts_with("lang/");
+        let source = !path.ends_with(".properties")
+            && !path.ends_with(".lang")
+            && !path.starts_with("lang/");
         Some(if source {
-            self.values.apply(text)
+            let text = self.values.apply(text);
+            if self.chosen.is_empty() {
+                text
+            } else {
+                crate::options::apply(&text, &self.chosen)
+            }
         } else {
             text.to_owned()
         })
@@ -242,13 +274,13 @@ pub(crate) mod tests {
     use std::io::Write;
 
     /// A zip of `(path, contents)` pairs, paths from the archive root.
-    pub(crate) fn zip(files: &[(&str, &str)]) -> Vec<u8> {
+    pub(crate) fn zip<C: AsRef<[u8]>>(files: &[(&str, C)]) -> Vec<u8> {
         let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
         for (path, contents) in files {
             w.start_file(*path, options).unwrap();
-            w.write_all(contents.as_bytes()).unwrap();
+            w.write_all(contents.as_ref()).unwrap();
         }
         w.finish().unwrap().into_inner()
     }

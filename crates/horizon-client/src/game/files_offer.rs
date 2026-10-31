@@ -149,7 +149,7 @@ impl Game<'_> {
         let (x, y) = ((w - card_w) / 2.0, ((h - card_h) / 2.0).max(8.0));
         ui.rounded(x, y, card_w, card_h, 14.0, color::BG);
         ui.border(x, y, card_w, card_h, 14.0, color::BORDER);
-        ui.text(Face::Semibold, 18.0, x + pad, y + pad, color::TEXT, title);
+        ui.text(Face::SemiBold, 18.0, x + pad, y + pad, color::TEXT, title);
         let mut ty = y + pad + 26.0 + 12.0;
         for line in &lines {
             ui.text(Face::Regular, 14.0, x + pad, ty, color::MUTED, line);
@@ -165,7 +165,7 @@ impl Game<'_> {
         ] {
             ui.rounded(rect[0], rect[1], rect[2], rect[3], 10.0, fill);
             ui.text_centered(
-                Face::Semibold,
+                Face::SemiBold,
                 15.0,
                 rect[0] + rect[2] / 2.0,
                 rect[1] + (rect[3] - 15.0) / 2.0 - 2.0,

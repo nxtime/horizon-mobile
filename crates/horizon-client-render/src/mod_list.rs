@@ -12,6 +12,11 @@ use std::{
 pub const FILE: &str = "horizon-mods.txt";
 /// The folder holding `.hmod` files, beside `options.txt`.
 pub const DIR: &str = "horizon-mods";
+/// Where the launcher installs native mods (`<id>.hnmod`), beside [`DIR`]. They run only in a
+/// game the launcher built with them.
+pub const NATIVE_DIR: &str = "horizon-native-mods";
+/// Why a native mod installed in [`NATIVE_DIR`] doesn't run in this game.
+pub const NOT_BUILT: &str = "Installed, not built into this game: build the game with it in the launcher (Settings > Native mods), then play the instance that build is in.";
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModList {
@@ -39,13 +44,12 @@ pub struct Installed {
     pub summary: String,
     /// Its settings screen (`screens.set-config`), when running.
     pub config: Option<String>,
+    /// The running mod set a page of widgets (capability `ui`): its row gains a Settings button.
+    pub has_settings: bool,
     /// Why it is not running, when it failed.
     pub problem: Option<String>,
-    /// Loaded with `--dev-mod`: always on, reloaded when rebuilt.
+    /// Loaded with `--dev-mod`: always on.
     pub dev: bool,
-    /// The running mod set a page of widgets (capability `ui`): its row
-    /// gains a Settings button.
-    pub has_settings: bool,
     /// A native mod (`game/native_hooks.rs`): built into the game, on until
     /// the player turns it off, and its settings page.
     pub native: Option<NativePage>,
@@ -183,9 +187,9 @@ mod tests {
             description: String::new(),
             summary: String::new(),
             config: None,
+            has_settings: false,
             problem: None,
             dev,
-            has_settings: false,
             native: None,
         };
         let mut list = ModList {

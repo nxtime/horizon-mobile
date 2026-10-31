@@ -326,7 +326,6 @@ impl Game<'_> {
         self.mods.replacing = false;
         let carried = self.carried.take().filter(|_| keep_carried);
         // The slots changed since the last tick, before the server's menu closes.
-        self.remote_creative_menu_sync();
         self.close_container();
         self.carried = carried;
     }

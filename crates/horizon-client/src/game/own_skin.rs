@@ -158,7 +158,7 @@ impl Game<'_> {
         // packs) written there again.
         if !self.own_skin.uploaded
             || !self.gui.atlas.sprites.contains_key(LOCATION)
-            || !self.show_skin(LOCATION)
+            || !self.skin_slots.contains(LOCATION)
         {
             let rgba = self.own_skin.image.clone()?;
             self.store_skin(LOCATION.to_owned(), rgba);
