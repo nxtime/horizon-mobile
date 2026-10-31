@@ -1126,6 +1126,11 @@ impl Audio {
             self.devices_seen = output_devices();
             return true;
         }
+        // Android: listing devices goes through AudioManager on the game thread, a 700 ms
+        // stall each time on a POCO F5, and AAudio follows the routing by itself.
+        if cfg!(target_os = "android") {
+            return false;
+        }
         self.device_ticks += 1;
         if self._stream.is_none() || self.device_ticks < 20 {
             return false;
