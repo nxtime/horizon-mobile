@@ -1,5 +1,5 @@
 //! Android: the prompt, over the title screen, when GitHub has a newer Starling release than this
-//! one (github.com/JuanLuci/starling/releases/latest). Update downloads its APK and hands it to
+//! one (github.com/nxtime/horizon-mobile/releases/latest). Update downloads its APK and hands it to
 //! Android's installer, which asks the player (and, the first time, to allow installing from
 //! Starling) and offers to open the game again once it is in; Tomorrow asks again in a day; No,
 //! at the next start. Only a release asks: a test build is signed with another key, and the
@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use winit::event::{Touch, TouchPhase};
 
-const LATEST: &str = "https://api.github.com/repos/JuanLuci/starling/releases/latest";
+const LATEST: &str = "https://api.github.com/repos/nxtime/horizon-mobile/releases/latest";
 /// How long Tomorrow keeps the prompt away.
 const LATER: Duration = Duration::from_secs(24 * 60 * 60);
 

@@ -18,10 +18,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 use winit::event::{Touch, TouchPhase};
 
-const RELEASE: &str = "https://api.github.com/repos/JuanLuci/starling/releases/tags/native-builds";
+const RELEASE: &str = "https://api.github.com/repos/nxtime/horizon-mobile/releases/tags/native-builds";
 /// The issue form that asks for a build (.github/ISSUE_TEMPLATE/native-build.yml), its version
 /// filled in.
-const REQUEST: &str = "https://github.com/JuanLuci/starling/issues/new?template=native-build.yml";
+const REQUEST: &str = "https://github.com/nxtime/horizon-mobile/issues/new?template=native-build.yml";
 /// The library's name in a build's folder, as NativeMods.java loads it.
 const LIBRARY: &str = "libhorizon_android.so";
 /// Rows of builds the card shows.
