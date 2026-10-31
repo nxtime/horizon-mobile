@@ -221,6 +221,7 @@ impl StatsView {
                 "gpu_allocated_bytes": self.gpu_allocated,
                 "gpu_reserved_bytes": self.gpu_reserved,
             },
+            "gpu_passes": self.gpu_passes,
             "world": {
                 "chunks": self.chunks,
                 "meshed_sections": self.meshed_sections,
