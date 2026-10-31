@@ -164,7 +164,7 @@ mod pack_post;
 mod pack_shadow;
 mod pack_sky;
 mod pack_textures;
-mod pack_timing;
+pub(crate) mod pack_timing;
 pub mod pack_uniforms;
 mod pack_weather;
 mod page_runs;
@@ -199,9 +199,11 @@ fn world_pass_after_culling<'e>(
     view: &wgpu::TextureView,
     depth: &wgpu::TextureView,
     keep_depth: bool,
+    timing: Option<wgpu::RenderPassTimestampWrites<'_>>,
 ) -> wgpu::RenderPass<'e> {
     encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Horizon world, after culling"),
+        timestamp_writes: timing,
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view,
             resolve_target: None,
@@ -763,8 +765,12 @@ pub struct Renderer {
     pack_post: Option<(i32, Option<pack_post::PackPost>)>,
     /// The post passes of one of Horizon's own shader packs; never beside `pack_post`'s.
     native: Option<native_pack::NativePack>,
-    /// Time the shader pack's passes on the GPU (F3, or `HORIZON_SHADER_PACK_TIMING`).
+    /// Time the shader pack's passes on the GPU (F3, or `HORIZON_SHADER_PACK_TIMING`), or the
+    /// vanilla frame's (the Stats overlay too).
     pass_timing: bool,
+    /// The vanilla frame's passes timed on the GPU (`pass_timing`), while no shader pack's
+    /// timer runs: world, post, hand, effects, HUD.
+    frame_timing: Option<pack_timing::PassTiming>,
     /// The entity vertices Horizon draws itself while a shader pack draws the others.
     pack_entity_rest: Vec<Vertex>,
     /// Set 1 of the cloud pipeline, for a shader pack's `gbuffers_clouds`.
@@ -797,6 +803,9 @@ pub struct Renderer {
     /// and the draw calls the backend issued for them.
     pub section_draws: usize,
     pub section_draw_calls: usize,
+    /// Last frame's terrain quads: the camera's section and far-tile draws (not the shadow
+    /// camera's).
+    pub drawn_quads: u64,
     pub uploaded_bytes: u64,
     started: Instant,
     /// The next frame to write to a PNG path (control socket, F2, world icon).
@@ -3271,6 +3280,7 @@ impl Renderer {
             pack_post: None,
             native: None,
             pass_timing: pack_timing::PassTiming::logging(),
+            frame_timing: None,
             pack_entity_rest: Vec::new(),
             cloud_bindings,
             pack_weather: None,
@@ -3288,6 +3298,7 @@ impl Renderer {
             drawn_sections: 0,
             section_draws: 0,
             section_draw_calls: 0,
+            drawn_quads: 0,
             uploaded_bytes: 0,
             started: Instant::now(),
             screenshot: None,
@@ -4314,6 +4325,15 @@ impl Renderer {
             .map(pack_timing::PassTiming::medians)
             .unwrap_or_default()
     }
+    /// Each pass of the vanilla frame (world, post, hand, effects, HUD), or of the running
+    /// shader pack, with its median GPU time in milliseconds, while they are timed
+    /// (`set_pass_timing`): what the Stats overlay's `gpu passes` line shows.
+    pub fn frame_pass_times(&self) -> Vec<(String, f32)> {
+        match &self.frame_timing {
+            Some(timer) => timer.medians(),
+            None => self.shader_pass_times(),
+        }
+    }
     /// The macros of the GL extensions this device gives shader packs: subgroups, when it
     /// has them.
     pub fn define_pack_macros(&self, macros: &mut horizon_shaders::Macros) {
@@ -5201,6 +5221,10 @@ impl Renderer {
         self.translucency_cursor += budget;
         let translucent_draws = self.draws.len() as u32 - solid_draws;
         self.section_draws = self.draws.len();
+        self.drawn_quads = self.draws[..self.section_draws]
+            .iter()
+            .map(|d| u64::from(d[0]) / 6)
+            .sum();
         // The shadow camera's sections after the camera's: quads that can face the light, then
         // translucent ones (in their last sorted order; depth decides there).
         let shadow_first = self.draws.len() as u32;
@@ -5659,6 +5683,18 @@ impl Renderer {
                 .then(|| pack_timing::PassTiming::new(&self.device, &self.queue))
                 .flatten();
         }
+        // The vanilla frame's own passes, timed while no shader pack's are.
+        let pack_timed = Self::pass_timer(&mut self.pack_post, &mut self.native).is_some();
+        if self.pass_timing && !pack_timed && !frame.title {
+            if self.frame_timing.is_none() {
+                self.frame_timing = pack_timing::PassTiming::for_frame(&self.device, &self.queue);
+            }
+        } else {
+            self.frame_timing = None;
+        }
+        if let Some(timer) = &mut self.frame_timing {
+            timer.begin(&self.device, &self.queue);
+        }
         let pack_reads_world = pack_post || native_post;
         // Phase 2 of occlusion culling draws over the depth, and a shader pack or TAA reads it.
         let keep_depth = pack_reads_world
@@ -5989,6 +6025,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Horizon world"),
                 color_attachments: &attachments,
+                timestamp_writes: self.frame_timing.as_mut().and_then(|t| t.writes("world")),
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: world_depth,
                     depth_ops: Some(wgpu::Operations {
@@ -6069,6 +6106,7 @@ impl Renderer {
                                 world_view,
                                 world_depth,
                                 keep_depth,
+                                self.frame_timing.as_mut().and_then(|t| t.writes("world 2")),
                             );
                             pass.set_bind_group(0, &self.group, &[]);
                             pack_frame(&mut pass);
@@ -6099,6 +6137,7 @@ impl Renderer {
                                 world_view,
                                 world_depth,
                                 keep_depth,
+                                self.frame_timing.as_mut().and_then(|t| t.writes("world 2")),
                             );
                             pass.set_bind_group(0, &self.group, &[]);
                             pack_frame(&mut pass);
@@ -6265,7 +6304,13 @@ impl Renderer {
                         color.size(),
                     );
                 }
-                pass = world_pass_after_culling(&mut encoder, world_view, world_depth, keep_depth);
+                pass = world_pass_after_culling(
+                    &mut encoder,
+                    world_view,
+                    world_depth,
+                    keep_depth,
+                    self.frame_timing.as_mut().and_then(|t| t.writes("world 3")),
+                );
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
             }
@@ -6421,7 +6466,13 @@ impl Renderer {
                         },
                         &extras,
                     );
-                    pass = world_pass_after_culling(&mut encoder, world_view, world_depth, true);
+                    pass = world_pass_after_culling(
+                        &mut encoder,
+                        world_view,
+                        world_depth,
+                        true,
+                        self.frame_timing.as_mut().and_then(|t| t.writes("translucent")),
+                    );
                     pass.set_bind_group(0, &self.group, &[]);
                     pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
                     // HDR output's mark on what shines in the stages, as the classic
@@ -6713,6 +6764,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("First-person hand"),
                 color_attachments: &attachments,
+                timestamp_writes: self.frame_timing.as_mut().and_then(|t| t.writes("hand")),
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth,
                     depth_ops: Some(wgpu::Operations {
@@ -6786,6 +6838,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Screen effects"),
                 color_attachments: &attachments,
+                timestamp_writes: self.frame_timing.as_mut().and_then(|t| t.writes("effects")),
                 ..Default::default()
             });
             pass.set_bind_group(0, &self.entity_group, &[]);
@@ -6815,6 +6868,10 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("3d crosshair"),
                 color_attachments: &attachments,
+                timestamp_writes: self
+                    .frame_timing
+                    .as_mut()
+                    .and_then(|t| t.writes("crosshair")),
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth,
                     depth_ops: Some(wgpu::Operations {
@@ -6842,6 +6899,7 @@ impl Renderer {
             frame.hud,
             [self.config.width, self.config.height],
             0..blur_at,
+            self.frame_timing.as_mut(),
         );
         if let Some(radius) = menu_blur {
             let format = self.config.format;
@@ -6865,6 +6923,7 @@ impl Renderer {
             frame.hud,
             [self.config.width, self.config.height],
             blur_at..frame.hud.vertices.len() as u32,
+            self.frame_timing.as_mut(),
         );
         if culling && let Some(cull) = &mut self.cull {
             cull.end(&self.device, &mut encoder);
@@ -6918,6 +6977,9 @@ impl Renderer {
             timer.collect(&self.device, &mut self.gpu_times);
         }
         if let Some(Some(timer)) = Self::pass_timer(&mut self.pack_post, &mut self.native) {
+            timer.submitted(&self.queue);
+        }
+        if let Some(timer) = &mut self.frame_timing {
             timer.submitted(&self.queue);
         }
         if let Some((request, buffer)) = readback {
