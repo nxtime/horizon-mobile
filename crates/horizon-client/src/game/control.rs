@@ -678,11 +678,12 @@ impl Game<'_> {
                     .strip_prefix("screenshot")
                     .unwrap_or("")
                     .trim();
-                // `screenshot -`: a file in the game folder, sent back in the reply as
-                // `png_base64` to a client on another machine (control::is_remote).
+                // `screenshot -`: a file in the private folder (Android refuses a new PNG in
+                // the shared one), sent back in the reply as `png_base64` to a client on
+                // another machine (control::is_remote).
                 let inline = path == "-";
                 let path: std::path::PathBuf = if inline {
-                    std::env::current_dir()?.join("horizon-ctl-screenshot.png")
+                    horizon_client::logging::private_home().join("horizon-ctl-screenshot.png")
                 } else {
                     path.into()
                 };
