@@ -351,11 +351,10 @@ impl Game<'_> {
     /// packs change, and the statuses for the server.
     pub(super) fn tick_server_packs(&mut self) {
         self.server_packs.notifiers.retain_mut(PackNotifier::poll);
-        // A reload waits for the world's resources (`reload_packs`) and for the one preparing.
+        // A reload waits for the world's resources (`reload_packs`).
         if self.rest_loader.is_some()
             || self.world_loader.is_some()
             || self.integrated_starting.is_some()
-            || self.pack_reload.is_some()
         {
             return;
         }
