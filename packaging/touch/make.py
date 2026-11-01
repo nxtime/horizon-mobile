@@ -11,7 +11,7 @@ import random
 import sys
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "crates" / "horizon-client" / "assets" / "touch"
@@ -301,6 +301,98 @@ def tile(name, pressed, turn=None):
     return img
 
 
+# The Modern style's icons: thin white outlines, drawn at four times their size and scaled down.
+M = 64
+LINE = 20
+
+
+def line_icon(paint):
+    big = M * 4
+    img = Image.new("RGBA", (big, big), (255, 255, 255, 0))
+    d = ImageDraw.Draw(img)
+
+    def pts(*p):
+        return [(x * big / 24, y * big / 24) for x, y in p]
+
+    def path(*p, close=False):
+        p = pts(*p) + (pts(p[0]) if close else [])
+        d.line(p, fill=ICON, width=LINE, joint="curve")
+        for x, y in p:
+            d.ellipse((x - LINE / 2, y - LINE / 2, x + LINE / 2, y + LINE / 2), fill=ICON)
+
+    def ring(x, y, r):
+        (x0, y0), (x1, y1) = pts((x - r, y - r), (x + r, y + r))
+        d.ellipse((x0, y0, x1, y1), outline=ICON, width=LINE)
+
+    def box(x0, y0, x1, y1, r=2):
+        (a, b), (c, e) = pts((x0, y0), (x1, y1))
+        d.rounded_rectangle((a, b, c, e), radius=r * big / 24, outline=ICON, width=LINE)
+
+    paint(path, ring, box)
+    return img.resize((M, M), Image.Resampling.LANCZOS)
+
+
+def _sword(path, ring, box):
+    path((20, 4), (14, 4), (5, 13), (11, 19), (20, 10), (20, 4))
+    path((3, 15), (9, 21))
+    path((4, 20), (2, 22))
+
+
+def _eye(path, ring, box):
+    path((2, 12), (7, 7), (12, 5.5), (17, 7), (22, 12), (17, 17), (12, 18.5), (7, 17), (2, 12))
+    ring(12, 12, 3)
+
+
+def _bug(path, ring, box):
+    box(7, 8, 17, 21, 5)
+    path((9, 8), (9, 6), (15, 6), (15, 8))
+    path((12, 12), (12, 21))
+    path((2, 11), (7, 12))
+    path((22, 11), (17, 12))
+    path((2, 20), (7, 17))
+    path((22, 20), (17, 17))
+
+
+def _players(path, ring, box):
+    ring(9, 8, 4)
+    path((2, 20), (4, 15), (9, 14), (14, 15), (16, 20))
+    path((15, 4.5), (18, 6), (18, 10), (15, 11.5))
+    path((18, 14.5), (21, 16), (22, 20))
+
+
+MODERN = {
+    "jump": lambda path, ring, box: path((12, 3), (21, 12), (16, 12), (16, 20), (8, 20), (8, 12),
+                                         (3, 12), close=True),
+    "sneak": lambda path, ring, box: (
+        path((12, 18), (21, 9), (16, 9), (16, 4), (8, 4), (8, 9), (3, 9), close=True),
+        path((6, 21), (18, 21))),
+    "inventory": lambda path, ring, box: (
+        box(5, 7, 19, 21, 4),
+        path((9, 7), (9, 4), (15, 4), (15, 7)),
+        path((8, 13), (16, 13)),
+        box(9, 13, 15, 18, 1)),
+    "menu": lambda path, ring, box: (path((4, 6), (20, 6)), path((4, 12), (20, 12)),
+                                     path((4, 18), (20, 18))),
+    "close": lambda path, ring, box: (path((5, 5), (19, 19)), path((19, 5), (5, 19))),
+    "offhand": lambda path, ring, box: (
+        path((3, 8), (21, 8)), path((17, 4), (21, 8), (17, 12)),
+        path((21, 16), (3, 16)), path((7, 12), (3, 16), (7, 20))),
+    "drop": lambda path, ring, box: (
+        path((12, 3), (12, 15)), path((7, 10), (12, 15), (17, 10)), path((4, 20), (20, 20))),
+    "pause": lambda path, ring, box: (box(6, 4, 10, 20, 1), box(14, 4, 18, 20, 1)),
+    "chat": lambda path, ring, box: path((3, 5), (21, 5), (21, 17), (11, 17), (6, 21), (6, 17),
+                                         (3, 17), close=True),
+    "command": lambda path, ring, box: (box(2, 4, 22, 20, 2), path((6, 9), (10, 12), (6, 15)),
+                                        path((12, 15), (18, 15))),
+    "camera": _eye,
+    "debug": _bug,
+    "players": _players,
+    "attack": _sword,
+    "use": lambda path, ring, box: (ring(12, 12, 8), path((12, 8), (12, 16)), path((8, 12), (16, 12))),
+    "pick": lambda path, ring, box: (ring(12, 12, 8), ring(12, 12, 2)),
+}
+
+
 def stick_base():
     """The stick's base: a large plate, its face see-through so the world shows."""
     return plate(STICK, False, alpha=96, seed=3)
@@ -321,6 +413,8 @@ def build():
     sprites["dpad_middle"] = tile(None, False)
     sprites["stick"] = stick_base()
     sprites["stick_knob"] = tile(None, False)
+    for name, paint in MODERN.items():
+        sprites["modern_" + name] = line_icon(paint)
     for name, img in sprites.items():
         img.save(OUT / f"{name}.png")
     return sprites

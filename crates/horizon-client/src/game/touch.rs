@@ -17,8 +17,8 @@ use horizon_client::{
     gamepad::Button as Pad,
     hud::HudBatch,
     touch::{
-        self, Action, Button, Chip, EditorAction, Interact, Layout, LayoutConfig, LayoutEditor,
-        Shape, Show, Target, TouchControls,
+        self, Action, Button, Chip, ControlStyle, EditorAction, Interact, Layout, LayoutConfig,
+        LayoutEditor, Shape, Show, Target, TouchControls,
     },
     ui_theme::{Face, Ui, color},
 };
@@ -62,6 +62,8 @@ pub(super) struct Touch {
     tapped: Option<(Instant, [f32; 2])>,
     /// The press held on the view uses (a mob, the air) rather than breaks.
     hold_uses: bool,
+    /// The Modern style's tray is open.
+    menu_open: bool,
     /// The gyroscope is listened to (the layout aims with it and the controls play).
     gyro_on: bool,
     /// The on-screen keyboard was asked for.
@@ -213,14 +215,51 @@ fn ring_of(ui: &mut Ui, shape: Shape, c: [f32; 2], r: f32, line: u32) {
 }
 /// A sprite over a button, `share` of its height, at an opacity.
 fn icon(ui: &mut Ui, sprite: &str, c: [f32; 2], r: f32, share: f32, a: f32) {
+    let tint = horizon_client::hud::rgba(255, 255, 255, (a.clamp(0.0, 1.0) * 255.0) as u8);
+    icon_tinted(ui, sprite, c, r, share, tint);
+}
+fn icon_tinted(ui: &mut Ui, sprite: &str, c: [f32; 2], r: f32, share: f32, tint: u32) {
     let gui = ui.batch.scale;
     let side = (2.0 * r * share / gui).round();
     let (x, y) = (
         (c[0] / gui - side / 2.0).round(),
         (c[1] / gui - side / 2.0).round(),
     );
-    let tint = horizon_client::hud::rgba(255, 255, 255, (a.clamp(0.0, 1.0) * 255.0) as u8);
     horizon_client::ui::sprite_sized(ui.batch, ui.atlas, sprite, x, y, side, side, tint);
+}
+/// A Modern button: a glass circle with a thin rim; held, white with a dark icon, and Sneak on,
+/// the accent.
+fn modern_button(ui: &mut Ui, sprite: &str, c: [f32; 2], r: f32, a: f32, on: bool, accent: bool) {
+    let dark = horizon_client::hud::rgba(20, 20, 26, 255);
+    let fill = match (on, accent) {
+        (true, true) => color::with_alpha(color::ACCENT, 0.9),
+        (true, false) => color::with_alpha(color::WHITE, 0.92),
+        _ => color::with_alpha(color::BG, 0.3 * a),
+    };
+    circle(ui, c, r, fill);
+    let rim = color::with_alpha(color::WHITE, 0.75 * a);
+    ring_of(ui, Shape::Round, c, r, rim);
+    if on && !accent {
+        icon_tinted(ui, sprite, c, r, 0.5, dark);
+    } else {
+        icon(ui, sprite, c, r, 0.5, a);
+    }
+}
+/// A button in the open tray: its icon over its name, on a plate while held.
+fn tray_button(ui: &mut Ui, sprite: &str, name: &str, c: [f32; 2], r: f32, on: bool) {
+    if on {
+        plate_of(ui, Shape::Square, c, r, pressed(1.0));
+    }
+    icon(ui, sprite, [c[0], c[1] - 0.25 * r], r, 0.42, 1.0);
+    let d = ui.density;
+    ui.text_centered(
+        Face::SemiBold,
+        (r / d * 0.42).clamp(9.0, 13.0),
+        c[0] / d,
+        (c[1] + 0.3 * r) / d,
+        ink(1.0),
+        name,
+    );
 }
 /// A label's size for a button's radius: a wide button's is its height's, not its width's.
 fn text_r(shape: Shape, r: f32) -> f32 {
@@ -362,6 +401,7 @@ pub(super) fn draw_editor(
         let fill = match action {
             EditorAction::Done => color::with_alpha(color::ACCENT, 0.9),
             EditorAction::Reset
+            | EditorAction::Style
             | EditorAction::Movement
             | EditorAction::Interact
             | EditorAction::Vibrate
@@ -371,6 +411,7 @@ pub(super) fn draw_editor(
         let text = match action {
             EditorAction::Done => "Done",
             EditorAction::Reset => "Reset",
+            EditorAction::Style => config.style.label(),
             // The movement control picked (a press switches it): auto is the D-pad where the
             // stick moves as the keys.
             EditorAction::Movement => match config.dpad {
@@ -437,6 +478,9 @@ impl Game<'_> {
             None => Layout::new(w as f32, h as f32, scale),
         };
         layout.dpad = self.touch_dpad();
+        if self.touch.menu_open && self.touch.editor.is_none() {
+            layout.open_tray();
+        }
         layout
     }
 
@@ -965,7 +1009,10 @@ impl Game<'_> {
                 Action::Press(Button::Sneak) => {}
                 Action::Press(Button::Inventory) => self.pad.touch_tap(Pad::North),
                 Action::Press(Button::Chat) => self.pad.touch_tap(Pad::DPadRight),
-                Action::Press(Button::Pause) => self.pad.touch_tap(Pad::Start),
+                Action::Press(Button::Pause) => {
+                    self.touch.menu_open = false;
+                    self.pad.touch_tap(Pad::Start);
+                }
                 Action::Press(Button::Drop) => self.pad.touch_tap(Pad::East),
                 Action::Press(Button::Offhand) => self.pad.touch_tap(Pad::West),
                 Action::Press(Button::Camera) => self.pad.touch_tap(Pad::DPadUp),
@@ -980,6 +1027,7 @@ impl Game<'_> {
                     self.debug_key(KeyCode::F3, KeyAction::Press);
                 }
                 Action::Release(Button::Debug) => {
+                    self.touch.menu_open = false;
                     self.physical_keys.remove(&KeyCode::F3);
                     self.debug_key(KeyCode::F3, KeyAction::Release);
                 }
@@ -996,11 +1044,18 @@ impl Game<'_> {
                         self.debug_key(key, KeyAction::Release);
                     }
                 }
+                Action::Press(Button::Menu) => self.touch.menu_open ^= true,
                 Action::Press(Button::Pick) => self.pad.touch_tap(Pad::DPadLeft),
                 // Held as the pad's View (key.playerlist) while the finger is on it.
                 Action::Press(Button::Players) => self.pad.touch_hold(Pad::Select, true),
-                Action::Release(Button::Players) => self.pad.touch_hold(Pad::Select, false),
-                Action::Release(_) => {}
+                Action::Release(Button::Players) => {
+                    self.touch.menu_open = false;
+                    self.pad.touch_hold(Pad::Select, false);
+                }
+                // What the tray opened is open: the tray closes.
+                Action::Release(button) => {
+                    self.touch.menu_open &= !touch::TRAY.contains(&button);
+                }
                 Action::Tap(p) => {
                     let now = Instant::now();
                     // Tap to interact aims where it landed while the click is held.
@@ -1077,6 +1132,11 @@ impl Game<'_> {
             return;
         }
         let layout = self.touch_layout();
+        let modern = self
+            .touch
+            .config
+            .as_ref()
+            .is_none_or(|c| c.style == ControlStyle::Modern);
         let mut ui = Ui::new(&self.gui.atlas, batch, (-1.0, -1.0));
         // A mod's button: its plate, its icon or its label.
         let face_of = |key: &str| self.touch.faces.iter().find(|f| f.key == key);
@@ -1099,6 +1159,7 @@ impl Game<'_> {
             };
             let shape = |b: Button| self.control_face(b).shape;
             let skin = |target: Target| match target {
+                _ if modern => None,
                 Target::Button(b) => self.control_face(b).skin.map(|(sprite, _)| sprite),
                 Target::Stick if !layout.dpad => self.mod_sprite("starling:touch/stick"),
                 Target::Stick | Target::Extra(_) => None,
@@ -1117,7 +1178,11 @@ impl Game<'_> {
                 layout.stick_alpha
             };
             // Starling's own look (packaging/touch), or a pack's, when the atlas has it.
-            let skin = |name: &str| self.mod_sprite(&format!("starling:touch/{name}"));
+            let skin = |name: &str| {
+                (!modern)
+                    .then(|| self.mod_sprite(&format!("starling:touch/{name}")))
+                    .flatten()
+            };
             if layout.dpad {
                 // Bedrock's D-pad: four arrows, the one held lit; the middle holds nothing yet.
                 let a = layout.stick_alpha.max(0.35);
@@ -1152,8 +1217,12 @@ impl Game<'_> {
                         icon(&mut ui, &top, knob, layout.stick_radius * 0.5, 1.0, a);
                     }
                     _ => {
-                        circle(&mut ui, base, layout.stick_radius, plate(a));
-                        circle(&mut ui, knob, layout.stick_radius * 0.5, pressed(a));
+                        let rim = color::with_alpha(color::WHITE, 0.75 * a);
+                        let glass = color::with_alpha(color::BG, 0.25 * a);
+                        circle(&mut ui, base, layout.stick_radius, glass);
+                        ring_of(&mut ui, Shape::Round, base, layout.stick_radius, rim);
+                        circle(&mut ui, knob, layout.stick_radius * 0.5, glass);
+                        ring_of(&mut ui, Shape::Round, knob, layout.stick_radius * 0.5, rim);
                     }
                 }
             }
@@ -1181,6 +1250,11 @@ impl Game<'_> {
                 }
             }
             let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
+            if let Some([x, y, w, h]) = layout.tray {
+                let d = ui.density;
+                let fill = color::with_alpha(color::BG, 0.8);
+                ui.rounded(x / d, y / d, w / d, h / d, h / d * 0.3, fill);
+            }
             for (button, c, r, a) in &layout.buttons {
                 if *a <= 0.0 {
                     continue;
@@ -1188,6 +1262,23 @@ impl Game<'_> {
                 let on =
                     self.touch.controls.held(*button) || (*button == Button::Sneak && sneaking);
                 let face = self.control_face(*button);
+                // Modern's own icon, unless a mod dressed this button.
+                let name = match button {
+                    Button::Menu if layout.tray.is_some() => "close",
+                    other => other.id(),
+                };
+                let sprite = (modern && face.icon.is_none() && face.label == button.label())
+                    .then(|| self.mod_sprite(&format!("starling:touch/modern_{name}")))
+                    .flatten();
+                if let Some(sprite) = sprite {
+                    if layout.tray.is_some() && touch::TRAY.contains(button) {
+                        tray_button(&mut ui, &sprite, button.tray_label(), *c, *r, on);
+                    } else {
+                        let accent = *button == Button::Sneak;
+                        modern_button(&mut ui, &sprite, *c, *r, *a, on, accent);
+                    }
+                    continue;
+                }
                 // A pack's button is drawn whole; a mod's look is a plate with its icon or label.
                 if let Some((skin, lit)) = &face.skin {
                     let sprite = lit.as_ref().filter(|_| on).unwrap_or(skin);

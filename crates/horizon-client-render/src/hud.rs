@@ -339,6 +339,70 @@ fn namespaced_gui_sprites(root: &Path) -> Vec<PackedImage> {
 /// `_pressed`, the D-pad's cells and the stick's, as `starling:touch/<name>`.
 const TOUCH_SPRITES: &[(&str, &[u8])] = &[
     (
+        "modern_attack",
+        include_bytes!("../../horizon-client/assets/touch/modern_attack.png"),
+    ),
+    (
+        "modern_camera",
+        include_bytes!("../../horizon-client/assets/touch/modern_camera.png"),
+    ),
+    (
+        "modern_chat",
+        include_bytes!("../../horizon-client/assets/touch/modern_chat.png"),
+    ),
+    (
+        "modern_close",
+        include_bytes!("../../horizon-client/assets/touch/modern_close.png"),
+    ),
+    (
+        "modern_command",
+        include_bytes!("../../horizon-client/assets/touch/modern_command.png"),
+    ),
+    (
+        "modern_debug",
+        include_bytes!("../../horizon-client/assets/touch/modern_debug.png"),
+    ),
+    (
+        "modern_drop",
+        include_bytes!("../../horizon-client/assets/touch/modern_drop.png"),
+    ),
+    (
+        "modern_inventory",
+        include_bytes!("../../horizon-client/assets/touch/modern_inventory.png"),
+    ),
+    (
+        "modern_jump",
+        include_bytes!("../../horizon-client/assets/touch/modern_jump.png"),
+    ),
+    (
+        "modern_menu",
+        include_bytes!("../../horizon-client/assets/touch/modern_menu.png"),
+    ),
+    (
+        "modern_offhand",
+        include_bytes!("../../horizon-client/assets/touch/modern_offhand.png"),
+    ),
+    (
+        "modern_pause",
+        include_bytes!("../../horizon-client/assets/touch/modern_pause.png"),
+    ),
+    (
+        "modern_pick",
+        include_bytes!("../../horizon-client/assets/touch/modern_pick.png"),
+    ),
+    (
+        "modern_players",
+        include_bytes!("../../horizon-client/assets/touch/modern_players.png"),
+    ),
+    (
+        "modern_sneak",
+        include_bytes!("../../horizon-client/assets/touch/modern_sneak.png"),
+    ),
+    (
+        "modern_use",
+        include_bytes!("../../horizon-client/assets/touch/modern_use.png"),
+    ),
+    (
         "attack",
         include_bytes!("../../horizon-client/assets/touch/attack.png"),
     ),

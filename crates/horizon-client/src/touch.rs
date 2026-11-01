@@ -53,7 +53,19 @@ pub enum Button {
     Pick,
     /// key.playerlist, held: the list of the server's players.
     Players,
+    /// The Modern style's: opens and closes the tray ([`TRAY`]). Held, the layout editor.
+    Menu,
 }
+
+/// What the Modern style keeps in the tray behind [`Button::Menu`], in its order.
+pub const TRAY: [Button; 6] = [
+    Button::Pause,
+    Button::Chat,
+    Button::Command,
+    Button::Camera,
+    Button::Debug,
+    Button::Players,
+];
 
 /// F3's combinations offered while the F3 button is held: the key binding pressed with it and
 /// what the chip says.
@@ -69,7 +81,7 @@ pub const DEBUG_COMBOS: [(&str, &str); 8] = [
 ];
 
 impl Button {
-    pub const ALL: [Button; 14] = [
+    pub const ALL: [Button; 15] = [
         Button::Jump,
         Button::Sneak,
         Button::Inventory,
@@ -84,6 +96,7 @@ impl Button {
         Button::Debug,
         Button::Pick,
         Button::Players,
+        Button::Menu,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -101,6 +114,16 @@ impl Button {
             Button::Debug => "F3",
             Button::Pick => "Pick",
             Button::Players => "List",
+            Button::Menu => "Menu",
+        }
+    }
+    /// Its name under its icon in the tray.
+    pub fn tray_label(self) -> &'static str {
+        match self {
+            Button::Pause => "Pause",
+            Button::Command => "Slash",
+            Button::Camera => "View",
+            other => other.label(),
         }
     }
     /// Its name in touch-layout.json.
@@ -120,6 +143,7 @@ impl Button {
             Button::Debug => "debug",
             Button::Pick => "pick",
             Button::Players => "players",
+            Button::Menu => "menu",
         }
     }
     /// Only for aiming the crosshair: tap to interact has no Attack and Use buttons (Bedrock's
@@ -240,6 +264,37 @@ impl SneakMode {
     }
 }
 
+/// How the controls are drawn and which of them stand on the screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ControlStyle {
+    /// Glass circles and thin icons, the rarer buttons in the tray and Drop on the hotbar.
+    #[default]
+    Modern,
+    /// The bevelled pixel buttons (or a pack's), every button on the screen.
+    Vanilla,
+}
+
+impl ControlStyle {
+    pub fn id(self) -> &'static str {
+        match self {
+            ControlStyle::Modern => "modern",
+            ControlStyle::Vanilla => "vanilla",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            ControlStyle::Modern => "Modern",
+            ControlStyle::Vanilla => "Vanilla",
+        }
+    }
+    fn next(self) -> Self {
+        match self {
+            ControlStyle::Modern => ControlStyle::Vanilla,
+            ControlStyle::Vanilla => ControlStyle::Modern,
+        }
+    }
+}
+
 /// Where one control is: its centre as a share of the window's width and height (so a layout
 /// fits any screen), its radius in units (a ninth of the shorter side), whether it shows, and
 /// how opaque it is drawn (times the layout's own opacity).
@@ -270,8 +325,8 @@ const fn place_off(x: f32, y: f32, size: f32) -> Place {
     }
 }
 
-/// The lowest opacity the editor sets: an invisible control is a ghost.
-pub const MIN_OPACITY: f32 = 0.1;
+/// The lowest opacity a shown control has: an invisible one is a ghost.
+pub const MIN_OPACITY: f32 = 0.35;
 /// The smallest a control gets, and a mod's button (a keybind's is as tall as a vanilla button,
 /// less than that on a large screen).
 const MIN_SIZE: f32 = 0.3;
@@ -331,6 +386,7 @@ pub struct LayoutConfig {
     pub buttons: Vec<(Button, Place)>,
     pub extra: Vec<Extra>,
     pub opacity: f32,
+    pub style: ControlStyle,
     /// How the Sneak button sneaks.
     pub sneak: SneakMode,
     /// What taps and presses on the view act on.
@@ -369,23 +425,25 @@ impl Default for LayoutConfig {
             stick: place(0.12, 0.733, 1.3),
             dpad: None,
             buttons: vec![
-                (Button::Jump, place(0.905, 0.7556, 0.8)),
-                (Button::Sneak, place(0.805, 0.8556, 0.6)),
-                (Button::Attack, place(0.815, 0.611, 0.6)),
-                (Button::Use, place(0.92, 0.533, 0.6)),
-                (Button::Inventory, place(0.95, 0.111, 0.55)),
+                (Button::Jump, place(0.921, 0.712, 0.8)),
+                (Button::Sneak, place(0.82, 0.8, 0.6)),
+                (Button::Attack, place(0.815, 0.5, 0.6)),
+                (Button::Use, place(0.92, 0.32, 0.6)),
+                (Button::Inventory, place(0.921, 0.515, 0.6)),
+                (Button::Menu, place(0.957, 0.094, 0.5)),
                 (Button::Chat, place(0.88, 0.111, 0.55)),
                 (Button::Command, place(0.81, 0.111, 0.5)),
                 (Button::Pause, place(0.5, 0.0833, 0.45)),
                 (Button::Camera, place(0.43, 0.0833, 0.45)),
                 (Button::Debug, place(0.57, 0.0833, 0.45)),
                 (Button::Drop, place(0.711, 0.951, 0.4)),
-                (Button::Offhand, place(0.289, 0.951, 0.4)),
-                (Button::Pick, place_off(0.83, 0.4, 0.5)),
+                (Button::Offhand, place(0.314, 0.944, 0.4)),
+                (Button::Pick, place_off(0.72, 0.42, 0.5)),
                 (Button::Players, place_off(0.36, 0.0833, 0.45)),
             ],
             extra: Vec::new(),
             opacity: 1.0,
+            style: ControlStyle::Modern,
             sneak: SneakMode::Toggle,
             interact: Interact::Tap,
             fixed_stick: false,
@@ -395,7 +453,36 @@ impl Default for LayoutConfig {
     }
 }
 
+/// The controls' default places before version 3 of touch-layout.json moved them for the tray: a
+/// saved layout still on one of these takes the new default, one the player moved stays.
+const OLD_DEFAULTS: [(Button, [f32; 2]); 6] = [
+    (Button::Jump, [0.905, 0.7556]),
+    (Button::Sneak, [0.805, 0.8556]),
+    (Button::Attack, [0.815, 0.611]),
+    (Button::Use, [0.92, 0.533]),
+    (Button::Inventory, [0.95, 0.111]),
+    (Button::Offhand, [0.289, 0.951]),
+];
+
 impl LayoutConfig {
+    fn move_old_defaults(&mut self) {
+        let fresh = LayoutConfig::default();
+        for (button, old) in OLD_DEFAULTS {
+            let home = fresh.buttons.iter().find(|(b, _)| *b == button);
+            let saved = self.buttons.iter_mut().find(|(b, _)| *b == button);
+            if let (Some((_, home)), Some((_, saved))) = (home, saved)
+                && [saved.x, saved.y] == old
+            {
+                *saved = Place {
+                    x: home.x,
+                    y: home.y,
+                    size: home.size,
+                    ..*saved
+                };
+            }
+        }
+    }
+
     /// touch-layout.json; controls it does not name keep their default place (a layout from
     /// before a button existed), and names it does not know are skipped.
     pub fn from_json(text: &str) -> Self {
@@ -424,6 +511,10 @@ impl LayoutConfig {
         if let Some(opacity) = value["opacity"].as_f64() {
             config.opacity = (opacity as f32).clamp(MIN_OPACITY, 1.0);
         }
+        config.style = match value["style"].as_str() {
+            Some("vanilla") => ControlStyle::Vanilla,
+            _ => ControlStyle::Modern,
+        };
         // "stick" was what an unpicked layout saved before "auto".
         config.dpad = match value["movement"].as_str() {
             Some("dpad") => Some(true),
@@ -467,6 +558,9 @@ impl LayoutConfig {
                 });
             }
         }
+        if value["version"].as_u64().unwrap_or(0) < 3 {
+            config.move_old_defaults();
+        }
         config
     }
 
@@ -483,8 +577,9 @@ impl LayoutConfig {
             .map(|e| (e.key.clone(), entry(&e.place)))
             .collect();
         let value = json!({
-            "version": 2,
+            "version": 3,
             "opacity": self.opacity,
+            "style": self.style.id(),
             "movement": match self.dpad {
                 Some(true) => "dpad",
                 Some(false) => "analog",
@@ -533,15 +628,21 @@ impl LayoutConfig {
         shape.hits(c, r, p)
     }
 
-    /// Whether `button` is part of the controls in this interaction mode.
+    /// Whether `button` stands on the screen in this interaction mode and style.
     pub fn offers(&self, button: Button) -> bool {
-        self.interact == Interact::Crosshair || !button.aims()
+        let modern = self.style == ControlStyle::Modern;
+        let standing = match button {
+            Button::Menu => modern,
+            Button::Drop => !modern,
+            other => !(modern && TRAY.contains(&other)),
+        };
+        standing && (self.interact == Interact::Crosshair || !button.aims())
     }
 
     /// How opaque a control is drawn while playing: 0 for a ghost.
     pub fn alpha(&self, place: &Place) -> f32 {
         match place.show {
-            Show::On => place.opacity * self.opacity,
+            Show::On => (place.opacity * self.opacity).max(MIN_OPACITY),
             Show::Ghost | Show::Off => 0.0,
         }
     }
@@ -615,6 +716,8 @@ pub struct Layout {
     /// The mods' buttons that work, the same way: their index in [`LayoutConfig::extra`], and
     /// their shape.
     pub extra: Vec<(usize, [f32; 2], f32, f32, Shape)>,
+    /// The open tray's panel: left, top, width, height ([`Layout::open_tray`]).
+    pub tray: Option<[f32; 4]>,
     /// The hotbar: its left edge, top, slot width (vanilla's 182x22 at the GUI scale).
     pub hotbar: [f32; 3],
     /// The close button over screens opened in a world (they have none for touch).
@@ -663,9 +766,38 @@ impl Layout {
                     (i, [p.x * w, p.y * h], p.size * u, config.alpha(p), e.shape)
                 })
                 .collect(),
+            tray: None,
             hotbar: [hotbar_left, (gui_h - 22.0) * s, 20.0 * s],
             close: ([w - 0.8 * u, 0.8 * u], 0.5 * u),
         }
+    }
+    /// The tray's buttons in a row beside the Menu button, toward the middle of the screen. They
+    /// come first, so they take a finger before what stands under them.
+    pub fn open_tray(&mut self) {
+        let Some(&(_, menu, _, alpha)) = self.buttons.iter().find(|(b, ..)| *b == Button::Menu)
+        else {
+            return;
+        };
+        let u = self.unit;
+        let (step, height) = (1.3 * u, 1.4 * u);
+        let width = step * TRAY.len() as f32;
+        let left = if menu[0] > self.width / 2.0 {
+            menu[0] - 0.8 * u - width
+        } else {
+            menu[0] + 0.8 * u
+        }
+        .clamp(0.0, (self.width - width).max(0.0));
+        let top = (menu[1] - height / 2.0).clamp(0.0, (self.height - height).max(0.0));
+        self.tray = Some([left, top, width, height]);
+        let row: Vec<_> = TRAY
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                let c = [left + step * (i as f32 + 0.5), top + height / 2.0];
+                (*b, c, 0.6 * u, alpha.max(0.6))
+            })
+            .collect();
+        self.buttons.splice(0..0, row);
     }
     /// The D-pad's cell under `p`: its column and row, -1..1 from the middle (`[0, -1]` the up
     /// arrow, the corners diagonals); None off the pad.
@@ -820,9 +952,18 @@ enum Role {
         cell: Option<[i8; 2]>,
         sprinting: bool,
     },
-    /// A finger on the hotbar, or one that landed on nothing that takes it.
+    /// A finger resting on a hotbar slot: at `drop_at` the held item drops, and on while it rests.
+    Slot {
+        slot: usize,
+        drop_at: Instant,
+    },
+    /// A finger that slid off the hotbar, or landed on nothing that takes it.
     Spent,
 }
+
+/// How long a finger rests on a hotbar slot to drop an item, and between items after it.
+const SLOT_DROP_HOLD: Duration = Duration::from_millis(450);
+const SLOT_DROP_REPEAT: Duration = Duration::from_millis(250);
 
 /// Up tapped twice this quickly sprints (Bedrock's D-pad).
 const DOUBLE_TAP: Duration = Duration::from_millis(300);
@@ -915,8 +1056,8 @@ impl TouchControls {
                     out.push(Action::DebugCombo(i));
                     Role::Spent
                 } else if let Some(button) = layout.button_at(p) {
-                    // Pause acts when it lifts: a long press is the layout editor.
-                    if button != Button::Pause {
+                    // Pause and Menu act when they lift: a long press is the layout editor.
+                    if !matches!(button, Button::Pause | Button::Menu) {
                         out.push(Action::Press(button));
                     }
                     if button == Button::Sneak {
@@ -925,7 +1066,10 @@ impl TouchControls {
                     Role::Button(button, now)
                 } else if let Some(slot) = layout.slot_at(p) {
                     out.push(Action::Slot(slot));
-                    Role::Spent
+                    Role::Slot {
+                        slot,
+                        drop_at: now + SLOT_DROP_HOLD,
+                    }
                 } else if let Some(cell) = layout.dpad_cell(p).filter(|_| {
                     !self
                         .fingers
@@ -1038,6 +1182,11 @@ impl TouchControls {
                             out.push(Action::Sprint(false));
                         }
                     }
+                    Role::Slot { slot, .. } => {
+                        if layout.slot_at(p) != Some(*slot) {
+                            *role = Role::Spent;
+                        }
+                    }
                     Role::Button(..) | Role::Spent => {}
                 }
             }
@@ -1095,23 +1244,32 @@ impl TouchControls {
                 self.dpad = None;
                 out
             }
-            Role::Button(Button::Pause, _) if ended => vec![Action::Press(Button::Pause)],
-            Role::Button(Button::Pause, _) => Vec::new(),
+            Role::Button(button @ (Button::Pause | Button::Menu), _) if ended => {
+                vec![Action::Press(button)]
+            }
+            Role::Button(Button::Pause | Button::Menu, _) => Vec::new(),
             Role::Button(button, _) => vec![Action::Release(button)],
-            Role::Spent => Vec::new(),
+            Role::Slot { .. } | Role::Spent => Vec::new(),
         }
     }
 
-    /// Each frame: a view press held still past [`HOLD`] starts breaking, pause held past
-    /// [`EDIT_HOLD`] opens the layout editor.
+    /// Each frame: a view press held still past [`HOLD`] starts breaking, pause or menu held past
+    /// [`EDIT_HOLD`] opens the layout editor, a finger resting on a hotbar slot drops items.
     pub fn frame(&mut self, now: Instant) -> Vec<Action> {
         let mut out = Vec::new();
         for (_, role) in &mut self.fingers {
-            if let Role::Button(Button::Pause, down) = role
+            if let Role::Button(Button::Pause | Button::Menu, down) = role
                 && now - *down >= EDIT_HOLD
             {
                 *role = Role::Spent;
                 out.push(Action::EditLayout);
+                continue;
+            }
+            if let Role::Slot { drop_at, .. } = role
+                && now >= *drop_at
+            {
+                *drop_at = now + SLOT_DROP_REPEAT;
+                out.push(Action::Press(Button::Drop));
                 continue;
             }
             if let Role::Look {
@@ -1209,6 +1367,8 @@ pub enum EditorAction {
     Vibrate,
     /// Aiming by turning the phone or not ([`LayoutConfig::gyro`]).
     Gyro,
+    /// Modern or Vanilla ([`ControlStyle`]).
+    Style,
 }
 
 /// The layout editor: drag a control to move it; the one last touched gets chips to make it
@@ -1227,18 +1387,19 @@ pub struct LayoutEditor {
 const SIZE_STEP: f32 = 0.1;
 
 impl LayoutEditor {
-    /// Done, the movement control, the interaction mode, vibration, the gyroscope and Reset,
-    /// near the top centre, under the row of buttons the default layout puts there.
-    pub fn bar(width: f32, height: f32) -> [(EditorAction, [f32; 2], f32); 6] {
+    /// Done, the style, the movement control, the interaction mode, vibration, the gyroscope and
+    /// Reset, near the top centre, under the row of buttons the default layout puts there.
+    pub fn bar(width: f32, height: f32) -> [(EditorAction, [f32; 2], f32); 7] {
         let u = unit(width, height);
         let at = |x: f32| [width / 2.0 + x * u, 2.6 * u];
         [
-            (EditorAction::Done, at(-3.35), 0.6 * u),
-            (EditorAction::Movement, at(-2.01), 0.6 * u),
-            (EditorAction::Interact, at(-0.67), 0.6 * u),
-            (EditorAction::Vibrate, at(0.67), 0.6 * u),
-            (EditorAction::Gyro, at(2.01), 0.6 * u),
-            (EditorAction::Reset, at(3.35), 0.6 * u),
+            (EditorAction::Done, at(-4.02), 0.6 * u),
+            (EditorAction::Style, at(-2.68), 0.6 * u),
+            (EditorAction::Movement, at(-1.34), 0.6 * u),
+            (EditorAction::Interact, at(0.0), 0.6 * u),
+            (EditorAction::Vibrate, at(1.34), 0.6 * u),
+            (EditorAction::Gyro, at(2.68), 0.6 * u),
+            (EditorAction::Reset, at(4.02), 0.6 * u),
         ]
     }
 
@@ -1382,10 +1543,13 @@ impl LayoutEditor {
                     }
                     if action == EditorAction::Interact {
                         config.interact = config.interact.next();
-                        // Attack and Use go with the crosshair.
-                        if matches!(self.selected, Some(Target::Button(b)) if !config.offers(b)) {
-                            self.selected = None;
-                        }
+                    }
+                    if action == EditorAction::Style {
+                        config.style = config.style.next();
+                    }
+                    // Attack and Use go with the crosshair, the tray's with the style.
+                    if matches!(self.selected, Some(Target::Button(b)) if !config.offers(b)) {
+                        self.selected = None;
                     }
                     return Some(action);
                 }
@@ -1810,7 +1974,7 @@ mod tests {
 
     #[test]
     fn pause_acts_on_release_and_a_long_press_opens_the_editor() {
-        let (l, now) = (layout(), Instant::now());
+        let (l, now) = (tray_layout(), Instant::now());
         let pause = l
             .buttons
             .iter()
@@ -1829,6 +1993,127 @@ mod tests {
             t.event(&l, 2, TouchPhase::Ended, pause, now + EDIT_HOLD)
                 .is_empty()
         );
+    }
+
+    fn tray_layout() -> Layout {
+        let mut l = layout();
+        l.open_tray();
+        l
+    }
+
+    #[test]
+    fn modern_keeps_the_rarer_buttons_in_the_tray_and_vanilla_on_the_screen() {
+        let modern = LayoutConfig::default();
+        let vanilla = LayoutConfig {
+            style: ControlStyle::Vanilla,
+            ..LayoutConfig::default()
+        };
+        for b in TRAY {
+            assert!(!modern.offers(b) && vanilla.offers(b), "{b:?}");
+        }
+        assert!(modern.offers(Button::Menu) && !vanilla.offers(Button::Menu));
+        assert!(!modern.offers(Button::Drop) && vanilla.offers(Button::Drop));
+        assert!(modern.offers(Button::Jump) && vanilla.offers(Button::Jump));
+    }
+
+    #[test]
+    fn the_tray_opens_inside_the_window_and_takes_fingers() {
+        let closed = layout();
+        let open = tray_layout();
+        let [x, y, w, h] = open.tray.unwrap();
+        assert!(x >= 0.0 && y >= 0.0 && x + w <= open.width && y + h <= open.height);
+        assert!(closed.tray.is_none());
+        for b in TRAY {
+            let (_, c, ..) = *open.buttons.iter().find(|(o, ..)| *o == b).unwrap();
+            assert_eq!(open.button_at(c), Some(b));
+            assert!(closed.buttons.iter().all(|(o, ..)| *o != b));
+        }
+    }
+
+    #[test]
+    fn menu_acts_when_it_lifts_and_held_opens_the_editor() {
+        let l = layout();
+        let (_, menu, ..) = *l.buttons.iter().find(|(b, ..)| *b == Button::Menu).unwrap();
+        let now = Instant::now();
+        let mut t = TouchControls::default();
+        assert!(t.event(&l, 1, TouchPhase::Started, menu, now).is_empty());
+        assert_eq!(
+            t.event(&l, 1, TouchPhase::Ended, menu, now),
+            vec![Action::Press(Button::Menu)]
+        );
+        t.event(&l, 2, TouchPhase::Started, menu, now);
+        assert_eq!(t.frame(now + EDIT_HOLD), vec![Action::EditLayout]);
+        assert!(
+            t.event(&l, 2, TouchPhase::Ended, menu, now + EDIT_HOLD)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_finger_resting_on_a_slot_drops_and_keeps_dropping() {
+        let l = layout();
+        let [left, top, slot] = l.hotbar;
+        let on = [left + slot * 2.5, top + slot / 2.0];
+        let now = Instant::now();
+        let mut t = TouchControls::default();
+        assert_eq!(
+            t.event(&l, 1, TouchPhase::Started, on, now),
+            vec![Action::Slot(2)]
+        );
+        assert!(t.frame(now + SLOT_DROP_HOLD / 2).is_empty());
+        let first = now + SLOT_DROP_HOLD;
+        assert_eq!(t.frame(first), vec![Action::Press(Button::Drop)]);
+        assert!(t.frame(first + SLOT_DROP_REPEAT / 2).is_empty());
+        assert_eq!(
+            t.frame(first + SLOT_DROP_REPEAT),
+            vec![Action::Press(Button::Drop)]
+        );
+    }
+
+    #[test]
+    fn a_quick_tap_or_a_finger_sliding_off_a_slot_drops_nothing() {
+        let l = layout();
+        let [left, top, slot] = l.hotbar;
+        let on = [left + slot * 2.5, top + slot / 2.0];
+        let now = Instant::now();
+        let mut t = TouchControls::default();
+        t.event(&l, 1, TouchPhase::Started, on, now);
+        t.event(&l, 1, TouchPhase::Ended, on, now);
+        assert!(t.frame(now + SLOT_DROP_HOLD * 2).is_empty());
+        t.event(&l, 2, TouchPhase::Started, on, now);
+        t.event(&l, 2, TouchPhase::Moved, [on[0], top - slot], now);
+        assert!(t.frame(now + SLOT_DROP_HOLD * 2).is_empty());
+    }
+
+    #[test]
+    fn a_shown_control_is_never_drawn_below_the_floor() {
+        let config = LayoutConfig {
+            opacity: 0.35,
+            ..LayoutConfig::default()
+        };
+        let place = Place {
+            opacity: 0.35,
+            ..config.stick
+        };
+        assert_eq!(config.alpha(&place), MIN_OPACITY);
+    }
+
+    #[test]
+    fn saved_layouts_leave_the_old_defaults_and_keep_what_the_player_moved() {
+        let old = r#"{"version":2,"buttons":{"inventory":{"x":0.95,"y":0.111,"size":0.55},"jump":{"x":0.5,"y":0.5,"size":0.9}}}"#;
+        let read = LayoutConfig::from_json(old);
+        let fresh = LayoutConfig::default();
+        let at = |c: &LayoutConfig, b: Button| c.buttons.iter().find(|(o, _)| *o == b).unwrap().1;
+        assert_eq!(at(&read, Button::Inventory), at(&fresh, Button::Inventory));
+        let jump = at(&read, Button::Jump);
+        assert_eq!([jump.x, jump.y], [0.5, 0.5]);
+        assert_eq!(read.style, ControlStyle::Modern);
+        let vanilla = LayoutConfig {
+            style: ControlStyle::Vanilla,
+            ..LayoutConfig::default()
+        };
+        let back = LayoutConfig::from_json(&vanilla.to_json());
+        assert_eq!(back.style, ControlStyle::Vanilla);
     }
 
     #[test]
@@ -2188,10 +2473,11 @@ mod tests {
         assert!(!sprint.live && (sprint.place.size - 0.24).abs() < 1e-5);
         let layout = Layout::from_config(&back, w, h, 6.0);
         assert_eq!(layout.extra.len(), 1);
-        // The stick, the buttons but Attack and Use (tap to interact), the running mod's.
+        // The stick, the buttons but Attack and Use (tap to interact), the tray's and Drop
+        // (Modern), the running mod's.
         assert_eq!(
             LayoutEditor::targets(&back, w, h).len(),
-            1 + Button::ALL.len() - 2 + 1
+            1 + Button::ALL.len() - 2 - TRAY.len() - 1 + 1
         );
         // Reset brings back the mods' own places.
         let mut reset = LayoutConfig::default();
@@ -2276,7 +2562,7 @@ mod tests {
         let tap = LayoutConfig::default();
         assert!(Layout::from_config(&tap, w, h, 6.0).tap);
         assert!(!has(&tap, Button::Attack) && !has(&tap, Button::Use));
-        assert!(has(&tap, Button::Debug) && has(&tap, Button::Jump));
+        assert!(has(&tap, Button::Menu) && has(&tap, Button::Jump));
         let aim = LayoutConfig {
             interact: Interact::Crosshair,
             ..LayoutConfig::default()
@@ -2291,7 +2577,11 @@ mod tests {
                 .iter()
                 .any(|(t, p, ..)| *t == Target::Button(b) && p.show == Show::Off)
         };
-        assert!(shown(&tap, Button::Pick) && shown(&tap, Button::Players));
+        let vanilla = LayoutConfig {
+            style: ControlStyle::Vanilla,
+            ..LayoutConfig::default()
+        };
+        assert!(shown(&tap, Button::Pick) && shown(&vanilla, Button::Players));
         assert!(tap.vibrate);
         let quiet = LayoutConfig {
             vibrate: false,
@@ -2326,7 +2616,7 @@ mod tests {
 
     #[test]
     fn f3_held_offers_its_combinations_to_a_finger_or_a_slide() {
-        let (l, now) = (layout(), Instant::now());
+        let (l, now) = (tray_layout(), Instant::now());
         let f3 = l
             .buttons
             .iter()

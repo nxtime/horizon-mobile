@@ -269,7 +269,8 @@ mod tests {
             names.push(format!("{glyph}_pressed"));
         }
         for name in crate::hud::touch_sprite_names() {
-            if name != "dpad_middle" {
+            // Modern's icons are Starling's alone: the Bedrock look is Vanilla's.
+            if name != "dpad_middle" && !name.starts_with("modern_") {
                 assert!(names.iter().any(|n| n == name), "{name}");
             }
         }
