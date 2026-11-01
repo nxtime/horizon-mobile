@@ -671,14 +671,12 @@ pub(super) struct Remote {
 /// time the player crossed a chunk border at 32 chunks; they decode on the
 /// chunk decoder's thread now, and the frame only inserts them.
 const CHUNK_PACKETS_PER_FRAME: Duration = Duration::from_millis(1);
+/// What a frame spends on an overdue backlog's chunk packets on a phone (`poll_remote`).
+const OVERDUE_CHUNK_PACKETS_PER_FRAME: Duration = Duration::from_millis(4);
 /// Events that have waited this long are all handled in the next frame,
 /// whatever inserting their columns costs, up to a column still decoding:
 /// the packets after a slow machine's chunks don't wait on its frames.
 const BACKLOG_LIMIT: Duration = Duration::from_millis(50);
-/// What a frame spends on an overdue backlog's chunk packets on a phone: there one frame
-/// taking the whole backlog after a teleport was a visible hitch (a 214 ms frame on the POCO
-/// F6 Pro); four times a frame's usual share still drains it in a few frames.
-const OVERDUE_CHUNK_PACKETS_PER_FRAME: Duration = Duration::from_millis(4);
 /// A gap in the ticks or movement sent to the server worth a log line (an old server's
 /// anticheat behind ViaVersion counts on one each tick, and a reminder every 20).
 const GAP_LOGGED: Duration = Duration::from_millis(1100);
