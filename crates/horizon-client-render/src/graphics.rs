@@ -376,6 +376,10 @@ pub struct Graphics {
     pub overlay: Overlay,
     /// World resolution as a percentage of the window's (50..=200).
     pub resolution_scale: u32,
+    /// Android: the window's own buffer as a percentage of the screen (25..=100). Below 100 the
+    /// game draws everything, HUD included, into a smaller buffer and the system's compositor
+    /// scales it up to the screen (no pass of the game's), as Bedrock and the Vasysik fork do.
+    pub window_scale: u32,
     /// FXAA over the world.
     pub fxaa: bool,
     /// TAA over the world (FXAA is off while it is on).
@@ -446,6 +450,7 @@ impl Default for Graphics {
             workers: 0,
             overlay: Overlay::Off,
             resolution_scale: 100,
+            window_scale: 100,
             fxaa: false,
             taa: false,
             upscaling: Upscaling::Native,
@@ -516,6 +521,7 @@ impl Graphics {
                 }
                 "workers" => g.workers = number(g.workers).min(64),
                 "resolutionScale" => g.resolution_scale = number(g.resolution_scale).clamp(25, 200),
+                "windowScale" => g.window_scale = number(g.window_scale).clamp(25, 100),
                 "fxaa" => g.fxaa = flag(g.fxaa),
                 "taa" => g.taa = flag(g.taa),
                 "upscaling" => g.upscaling = Upscaling::parse(value),
@@ -560,7 +566,7 @@ impl Graphics {
     }
     pub fn serialize(&self) -> String {
         format!(
-            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\noverlay:{}\nresolutionScale:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiBrightness:{}\nhdrKey:{}\nbatteryMode:{}\ngraphicsApi:{}\npickedShaderPack:{}\nshadersProfile:{}\n",
+            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\noverlay:{}\nresolutionScale:{}\nwindowScale:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiBrightness:{}\nhdrKey:{}\nbatteryMode:{}\ngraphicsApi:{}\npickedShaderPack:{}\nshadersProfile:{}\n",
             self.preset.name(),
             self.lod_distance,
             self.far_detail.name(),
@@ -585,6 +591,7 @@ impl Graphics {
                 Overlay::Stats => "stats",
             },
             self.resolution_scale,
+            self.window_scale,
             bool_text(self.fxaa),
             bool_text(self.taa),
             self.upscaling.name(),
@@ -819,6 +826,7 @@ mod tests {
             workers: 6,
             overlay: Overlay::Graph,
             resolution_scale: 75,
+            window_scale: 50,
             fxaa: true,
             taa: true,
             upscaling: Upscaling::Balanced,
