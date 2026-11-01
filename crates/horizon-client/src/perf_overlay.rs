@@ -84,7 +84,12 @@ impl FrameGraph {
                 .fold(0.0, f32::max)
                 + 6.0,
         );
-        let x = batch.width - width - 2.0;
+        // The phone's top right is the touch Menu and its tray.
+        let x = if cfg!(target_os = "android") {
+            2.0
+        } else {
+            batch.width - width - 2.0
+        };
         let graph = if mode == Overlay::Graph { 42.0 } else { 0.0 };
         batch.fill(
             atlas,
